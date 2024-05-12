@@ -1,0 +1,113 @@
+﻿@page "/books/details"
+@inject LAB4_2.Data.ApplicationDbContext DB
+@using LAB4_2.Components
+@inject NavigationManager NavigationManager
+@using Microsoft.EntityFrameworkCore
+@rendermode InteractiveServer
+
+@using Radzen
+@using Radzen.Blazor
+<link rel="stylesheet" href="_content/Radzen.Blazor/css/material-base.css">
+<link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+<script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject AuthenticationStateProvider GetAuthenticationStateAsync
+
+<PageTitle>Details</PageTitle>
+
+<h1>Details</h1>
+
+<div>
+    <h4>Book</h4>
+    <hr />
+    @if (book is null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else {
+        <dl class="row">
+            @if(book.Url != null && book.Url != "")
+            {
+                <div width="75">
+                    <img src="@book.Url" alt="img" >
+                </div>
+            }
+            <dt class="col-sm-2">Title</dt>
+            <dd class="col-sm-10">@book.Title</dd>
+            <dt class="col-sm-2">Description</dt>
+            <dd class="col-sm-10">@book.Description</dd>
+            <dt class="col-sm-2">ReleaseData</dt>
+            <dd class="col-sm-10">@book.ReleaseData</dd>
+            <dt class="col-sm-2">Rate</dt>
+            <dd class="col-sm-10">@Math.Round((decimal)book.Rate,2)</dd>
+            <dt class="col-sm-2">RateCount</dt>
+            <dd class="col-sm-10">@book.RateCount</dd>
+        </dl>
+        <div class="rz-p-12">
+            <p>Your Rating:</p>
+            <RadzenRating TValue="int" Value=@value Change=@(args => UpdateRating(args)) />
+        </div>
+        <div>
+            <a href="@($"/books/edit?id={book.Id}")">Edit</a> |
+            <a href="@($"/books")">Back to List</a>
+        </div>
+    }
+</div>
+
+@code {
+    Book? book;
+    int value;
+    string? email;
+    [SupplyParameterFromQuery]
+    public int Id { get; set; }
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        book = await DB.Book.FirstOrDefaultAsync(m => m.Id == Id);
+        var authstate = await GetAuthenticationStateAsync.GetAuthenticationStateAsync();
+        var user = authstate.User;
+        email = user?.Identity?.Name;
+        if (book is null)
+        {
+            NavigationManager.NavigateTo("notfound");
+        }
+        else
+        {
+            var userId = DB.Users.Where(u => u.Email == email).First().Id;
+            BookRating? rating = DB.BookRating.FirstOrDefault(u => u.UserId == userId && u.BookId == Id);
+            if (rating != null) value = rating.Rate;
+        }
+
+
+    }
+    public void UpdateRating(int args)
+    {
+        var userId = DB.Users.Where(u => u.Email == email).First().Id;
+        if (book == null) return;
+        BookRating? rating = DB.BookRating.FirstOrDefault(u => u.UserId == userId && u.BookId == Id);
+        if (rating == null)
+        {
+            rating = new()
+                {
+                    Rate = args,
+                    UserId = userId,
+                    BookId = Id,
+                    Id = 0
+                };
+            DB.BookRating.Add(rating);
+            book.RateCount++;
+        }
+        else rating.Rate = args;
+        int? rateCount = book.RateCount;
+        DB.SaveChanges();
+        if(rateCount != null)
+            book.Rate = DB.BookRating.Where(u => u.BookId == Id).Sum(u => (float)u.Rate) / (float)rateCount;
+        DB.SaveChanges();
+        value = args;
+    }
+}
